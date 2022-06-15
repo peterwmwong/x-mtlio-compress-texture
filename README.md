@@ -1,5 +1,7 @@
 This command line project reproduces an error when using `MTLIOCommandBuffer.load(texture:)` with a file handle with a compression method.
 
+This is associated to FB10281264 (Apple Feedback Assistant).
+
 # Background
 
 The WWDC 2022 session [Load resources faster with Metal 3](https://developer.apple.com/videos/play/wwdc2022/10104) outlines how to create a compressed pack file and how to load it with the new Metal 3 features with MTLIO.
