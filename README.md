@@ -1,3 +1,5 @@
+> :exclamation: **_Update:_**  Good news! This issue has been fixed in **MacOS Version 13.0 Beta 2 (22A5286j)** / **XCode Version 14.0 Beta 2 (14A5229c)**
+
 This command line project reproduces an error when using `MTLIOCommandBuffer.load(texture:)` with a file handle with a compression method.
 
 This is associated to FB10281264 (Apple Feedback Assistant).
