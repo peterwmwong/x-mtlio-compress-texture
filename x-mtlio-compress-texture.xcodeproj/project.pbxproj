@@ -23,11 +23,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		132A3EDD28762E5F00F9C0DE /* texture.rawbytes.lz4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = texture.rawbytes.lz4; sourceTree = "<group>"; };
+		132A3EE1287633FF00F9C0DE /* texture.rawbytes */ = {isa = PBXFileReference; lastKnownFileType = text; path = texture.rawbytes; sourceTree = "<group>"; };
+		132A3EE22876340700F9C0DE /* texture.rawbytes.lz4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = texture.rawbytes.lz4; sourceTree = "<group>"; };
 		136FC36E285A6CF8003DC900 /* x-mtlio-compress-texture */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "x-mtlio-compress-texture"; sourceTree = BUILT_PRODUCTS_DIR; };
 		136FC371285A6CF8003DC900 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		136FC378285A6D38003DC900 /* brick.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = brick.png; sourceTree = "<group>"; };
-		13E6922228762A6400C9AFF8 /* texture.rawbytes */ = {isa = PBXFileReference; lastKnownFileType = text; path = texture.rawbytes; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,8 +62,8 @@
 			children = (
 				136FC378285A6D38003DC900 /* brick.png */,
 				136FC371285A6CF8003DC900 /* main.swift */,
-				13E6922228762A6400C9AFF8 /* texture.rawbytes */,
-				132A3EDD28762E5F00F9C0DE /* texture.rawbytes.lz4 */,
+				132A3EE1287633FF00F9C0DE /* texture.rawbytes */,
+				132A3EE22876340700F9C0DE /* texture.rawbytes.lz4 */,
 			);
 			path = "x-mtlio-compress-texture";
 			sourceTree = "<group>";
