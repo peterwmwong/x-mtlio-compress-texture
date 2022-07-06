@@ -3,92 +3,93 @@ import Metal
 import MetalKit
 
 let COMPRESSION_METHOD = MTLIOCompressionMethod.lz4
-let UNCOMPRESSED_FILE_URL = URL(filePath: "/tmp/uncompressed.dat")
-let COMPRESSED_FILE_URL = URL(filePath: "/tmp/compressed.lz4")
-
 let BYTES_PER_PIXEL = MemoryLayout<SIMD4<UInt8>>.size
+let TEXTURE_WIDTH = 2048;
+let TEXTURE_HEIGHT = 2048;
+let TEXTURE_BYTES_PER_ROW = 2048 * BYTES_PER_PIXEL;
+let TEXTURE_TOTAL_BYTES = TEXTURE_BYTES_PER_ROW * TEXTURE_HEIGHT;
+let CUBE_FACE_RANGE = 0...1;
 
-assert(ProcessInfo.processInfo.arguments.count == 2, "No image file path provided")
+assert(ProcessInfo.processInfo.arguments.count == 3, "No image bytes file and compressed image bytes file path provided")
 
-let imagePath = ProcessInfo.processInfo.arguments[1]
+let textureRawBytes = ProcessInfo.processInfo.arguments[1]
+assert(FileManager.default.fileExists(atPath: textureRawBytes), "\(textureRawBytes) does not exist")
 
-assert(FileManager.default.fileExists(atPath: imagePath), "\(imagePath) does not exist")
+let compressedTextureRawBytesPath = ProcessInfo.processInfo.arguments[2]
+let compressedTextureRawBytesPathURL = URL(filePath: compressedTextureRawBytesPath)
+assert(FileManager.default.fileExists(atPath: compressedTextureRawBytesPath), "\(compressedTextureRawBytesPath) does not exist")
+
+let textureRawBytesData = try Data(contentsOf: URL(fileURLWithPath: textureRawBytes))
+assert(textureRawBytesData.count == TEXTURE_TOTAL_BYTES, "Image bytes does not match expected number of bytes")
+var originalImageBytes: [UInt8] = Array.init(repeating: 0, count: TEXTURE_TOTAL_BYTES)
+let numBytesCopied = originalImageBytes.withUnsafeMutableBufferPointer { buffer in
+    textureRawBytesData.copyBytes(to: buffer)
+}
 
 let device = MTLCreateSystemDefaultDevice()!
+let textureDesc = MTLTextureDescriptor()
+textureDesc.textureType = .typeCube
+textureDesc.width = TEXTURE_WIDTH
+textureDesc.height = TEXTURE_HEIGHT
+textureDesc.depth = 1
+textureDesc.swizzle.red = MTLTextureSwizzle.red
+textureDesc.swizzle.green = MTLTextureSwizzle.green
+textureDesc.swizzle.blue = MTLTextureSwizzle.blue
+textureDesc.swizzle.alpha = MTLTextureSwizzle.alpha
+textureDesc.pixelFormat = .rgba8Unorm
+let texture = device.makeTexture(descriptor: textureDesc)!
 
-print("Load image bytes from file \(imagePath) using MTKTextureLoader and MTLTexture.getBytes()...")
-let sourceTexture = try MTKTextureLoader(device: device).newTexture(URL: URL(filePath: imagePath))
 
-assert([.bgra8Unorm_srgb, .bgra8Unorm, .rgba8Unorm_srgb, .rgba8Unorm].contains(sourceTexture.pixelFormat), "Unexpected texture pixel format from loading image")
-let bytesPerRow = sourceTexture.width * BYTES_PER_PIXEL
-let totalBytes = bytesPerRow * sourceTexture.height
-var originalImageBytes: [UInt8] = Array<UInt8>.init(repeating: 0, count: totalBytes)
-
-sourceTexture.getBytes(&originalImageBytes,
-                       bytesPerRow: bytesPerRow,
-                       from: MTLRegion(
-                        origin: MTLOrigin(x: 0, y: 0, z: 0),
-                        size: MTLSize(width: sourceTexture.width, height: sourceTexture.height, depth: 1)
-                       ),
-                       mipmapLevel: 0)
-
-print("Writing image bytes (uncompressed) to \(UNCOMPRESSED_FILE_URL)...")
-try Data(bytes: &originalImageBytes, count: totalBytes).write(to: UNCOMPRESSED_FILE_URL)
-
-print("Writing image bytes (compressed) to \(COMPRESSED_FILE_URL)...")
-let context = MTLIOCreateCompressionContext(COMPRESSED_FILE_URL.path(percentEncoded: false), COMPRESSION_METHOD, kMTLIOCompressionContextDefaultChunkSize)
-MTLIOCompressionContextAppendData(context, &originalImageBytes, totalBytes)
-let compressionStatus = MTLIOFlushAndDestroyCompressionContext(context)
-assert(compressionStatus == MTLIOCompressionStatus.complete, "Failed to write \(COMPRESSED_FILE_URL)")
-
-func loadTextureUsingMTLIO(width: Int, height: Int, fileURL: URL, compressionMethod: MTLIOCompressionMethod?) throws {
-    let fileHandle: MTLIOFileHandle
-    if let compressionMethod {
-        fileHandle = try device.makeIOHandle(url: fileURL, compressionMethod: compressionMethod)
-    } else {
-        fileHandle = try device.makeIOHandle(url: fileURL)
-    }
-
-    let textureDesc = MTLTextureDescriptor()
-    textureDesc.width = sourceTexture.width
-    textureDesc.height = sourceTexture.height
-    textureDesc.pixelFormat = sourceTexture.pixelFormat
-    let texture = device.makeTexture(descriptor: textureDesc)!
-
-    let cmdQueue = try device.makeIOCommandQueue(descriptor: MTLIOCommandQueueDescriptor())
-    let cmdBuffer = cmdQueue.makeCommandBuffer()
-
+print("Loading compressed file as texture, get ready for an error...")
+let fileHandle: MTLIOFileHandle = try device.makeIOHandle(url: compressedTextureRawBytesPathURL, compressionMethod: COMPRESSION_METHOD)
+let cmdQueue = try device.makeIOCommandQueue(descriptor: MTLIOCommandQueueDescriptor())
+let cmdBuffer = cmdQueue.makeCommandBuffer()
+print(
+    texture.swizzle.red == MTLTextureSwizzle.red &&
+    texture.swizzle.green == MTLTextureSwizzle.green &&
+    texture.swizzle.blue == MTLTextureSwizzle.blue &&
+    texture.swizzle.alpha == MTLTextureSwizzle.alpha
+);
+for i in CUBE_FACE_RANGE {
     cmdBuffer.load(
         texture,
-        slice: 0,
+        slice: i,
         level: 0,
         size: MTLSize(width: texture.width, height: texture.height, depth: texture.depth),
-        sourceBytesPerRow: bytesPerRow,
-        sourceBytesPerImage: totalBytes,
+        sourceBytesPerRow: TEXTURE_BYTES_PER_ROW,
+        sourceBytesPerImage: TEXTURE_TOTAL_BYTES,
         destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0),
         sourceHandle: fileHandle,
         sourceHandleOffset: 0
     )
-    cmdBuffer.commit()
-    cmdBuffer.waitUntilCompleted()
+}
+cmdBuffer.commit()
+cmdBuffer.waitUntilCompleted()
+assert(cmdBuffer.status == .complete, "Failed to load texture");
 
-    print("  Verifying loaded image from texture...")
-    var imageBytes: [UInt8] = Array<UInt8>.init(repeating: 0, count: totalBytes)
+print("  Verifying loaded image from texture...")
+var imageBytes: [UInt8] = Array<UInt8>.init(repeating: 0, count: TEXTURE_TOTAL_BYTES)
+for i in CUBE_FACE_RANGE {
     texture.getBytes(&imageBytes,
-                     bytesPerRow: bytesPerRow,
+                     bytesPerRow: TEXTURE_BYTES_PER_ROW,
+                     bytesPerImage: TEXTURE_TOTAL_BYTES,
                      from: MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0),
                                      size: MTLSize(width: texture.width,
                                                    height: texture.height,
                                                    depth: texture.depth)),
-                     mipmapLevel: 0)
-    assert(memcmp(imageBytes, originalImageBytes, totalBytes) == 0, "Image is not the same")
-
+                     mipmapLevel: 0,
+                     slice: i)
+    
+    if memcmp(imageBytes, originalImageBytes, TEXTURE_TOTAL_BYTES) != 0 {
+        print(
+            texture.swizzle.red == MTLTextureSwizzle.red &&
+            texture.swizzle.green == MTLTextureSwizzle.green &&
+            texture.swizzle.blue == MTLTextureSwizzle.blue &&
+            texture.swizzle.alpha == MTLTextureSwizzle.alpha
+        );
+        let displayByteRange = 0..<4;
+        print("[Face #\(i)] expected: \(originalImageBytes[displayByteRange]) actual: \(imageBytes[displayByteRange])")
+        assertionFailure("Image is not the same")
+    }
 }
-
-print("Loading uncompressed file as texture...")
-try loadTextureUsingMTLIO(width: sourceTexture.width, height: sourceTexture.height, fileURL: UNCOMPRESSED_FILE_URL, compressionMethod: nil)
-print("... success!")
-
-print("Loading compressed file as texture, get ready for an error...")
-try loadTextureUsingMTLIO(width: sourceTexture.width, height: sourceTexture.height, fileURL: COMPRESSED_FILE_URL, compressionMethod: COMPRESSION_METHOD)
 print("... success!")
