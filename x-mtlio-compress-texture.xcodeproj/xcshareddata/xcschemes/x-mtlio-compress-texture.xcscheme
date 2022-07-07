@@ -53,11 +53,7 @@
       </BuildableProductRunnable>
       <CommandLineArguments>
          <CommandLineArgument
-            argument = "$(SRCROOT)/x-mtlio-compress-texture/texture.rawbytes"
-            isEnabled = "YES">
-         </CommandLineArgument>
-         <CommandLineArgument
-            argument = "$(SRCROOT)/x-mtlio-compress-texture/texture.rawbytes.lz4"
+            argument = "$(SRCROOT)/x-mtlio-compress-texture/cubemap-textures/"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>

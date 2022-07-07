@@ -2,94 +2,147 @@ import Foundation
 import Metal
 import MetalKit
 
-let COMPRESSION_METHOD = MTLIOCompressionMethod.lz4
-let BYTES_PER_PIXEL = MemoryLayout<SIMD4<UInt8>>.size
-let TEXTURE_WIDTH = 2048;
-let TEXTURE_HEIGHT = 2048;
-let TEXTURE_BYTES_PER_ROW = 2048 * BYTES_PER_PIXEL;
-let TEXTURE_TOTAL_BYTES = TEXTURE_BYTES_PER_ROW * TEXTURE_HEIGHT;
-let CUBE_FACE_RANGE = 0...1;
+let USE_SINGLE_COMMAND_BUFFER = true
+let COMPRESSION_METHOD        = MTLIOCompressionMethod.lz4
+let COMPRESSION_CHUNK_SIZE    = MTLIOCompressionContextDefaultChunkSize()
+let BYTES_PER_PIXEL           = MemoryLayout<SIMD4<UInt8>>.size
+let CUBE_FACE_RANGE           = 0...5;
 
-assert(ProcessInfo.processInfo.arguments.count == 3, "No image bytes file and compressed image bytes file path provided")
-
-let textureRawBytes = ProcessInfo.processInfo.arguments[1]
-assert(FileManager.default.fileExists(atPath: textureRawBytes), "\(textureRawBytes) does not exist")
-
-let compressedTextureRawBytesPath = ProcessInfo.processInfo.arguments[2]
-let compressedTextureRawBytesPathURL = URL(filePath: compressedTextureRawBytesPath)
-assert(FileManager.default.fileExists(atPath: compressedTextureRawBytesPath), "\(compressedTextureRawBytesPath) does not exist")
-
-let textureRawBytesData = try Data(contentsOf: URL(fileURLWithPath: textureRawBytes))
-assert(textureRawBytesData.count == TEXTURE_TOTAL_BYTES, "Image bytes does not match expected number of bytes")
-var originalImageBytes: [UInt8] = Array.init(repeating: 0, count: TEXTURE_TOTAL_BYTES)
-let numBytesCopied = originalImageBytes.withUnsafeMutableBufferPointer { buffer in
-    textureRawBytesData.copyBytes(to: buffer)
-}
-
-let device = MTLCreateSystemDefaultDevice()!
-let textureDesc = MTLTextureDescriptor()
-textureDesc.textureType = .typeCube
-textureDesc.width = TEXTURE_WIDTH
-textureDesc.height = TEXTURE_HEIGHT
-textureDesc.depth = 1
-textureDesc.swizzle.red = MTLTextureSwizzle.red
-textureDesc.swizzle.green = MTLTextureSwizzle.green
-textureDesc.swizzle.blue = MTLTextureSwizzle.blue
-textureDesc.swizzle.alpha = MTLTextureSwizzle.alpha
-textureDesc.pixelFormat = .rgba8Unorm
-let texture = device.makeTexture(descriptor: textureDesc)!
-
-
-print("Loading compressed file as texture, get ready for an error...")
-let fileHandle: MTLIOFileHandle = try device.makeIOHandle(url: compressedTextureRawBytesPathURL, compressionMethod: COMPRESSION_METHOD)
-let cmdQueue = try device.makeIOCommandQueue(descriptor: MTLIOCommandQueueDescriptor())
-let cmdBuffer = cmdQueue.makeCommandBuffer()
-print(
-    texture.swizzle.red == MTLTextureSwizzle.red &&
-    texture.swizzle.green == MTLTextureSwizzle.green &&
-    texture.swizzle.blue == MTLTextureSwizzle.blue &&
-    texture.swizzle.alpha == MTLTextureSwizzle.alpha
-);
-for i in CUBE_FACE_RANGE {
-    cmdBuffer.load(
-        texture,
-        slice: i,
-        level: 0,
-        size: MTLSize(width: texture.width, height: texture.height, depth: texture.depth),
-        sourceBytesPerRow: TEXTURE_BYTES_PER_ROW,
-        sourceBytesPerImage: TEXTURE_TOTAL_BYTES,
-        destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0),
-        sourceHandle: fileHandle,
-        sourceHandleOffset: 0
-    )
-}
-cmdBuffer.commit()
-cmdBuffer.waitUntilCompleted()
-assert(cmdBuffer.status == .complete, "Failed to load texture");
-
-print("  Verifying loaded image from texture...")
-var imageBytes: [UInt8] = Array<UInt8>.init(repeating: 0, count: TEXTURE_TOTAL_BYTES)
-for i in CUBE_FACE_RANGE {
-    texture.getBytes(&imageBytes,
-                     bytesPerRow: TEXTURE_BYTES_PER_ROW,
-                     bytesPerImage: TEXTURE_TOTAL_BYTES,
-                     from: MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0),
-                                     size: MTLSize(width: texture.width,
-                                                   height: texture.height,
-                                                   depth: texture.depth)),
-                     mipmapLevel: 0,
-                     slice: i)
-    
-    if memcmp(imageBytes, originalImageBytes, TEXTURE_TOTAL_BYTES) != 0 {
-        print(
-            texture.swizzle.red == MTLTextureSwizzle.red &&
-            texture.swizzle.green == MTLTextureSwizzle.green &&
-            texture.swizzle.blue == MTLTextureSwizzle.blue &&
-            texture.swizzle.alpha == MTLTextureSwizzle.alpha
-        );
-        let displayByteRange = 0..<4;
-        print("[Face #\(i)] expected: \(originalImageBytes[displayByteRange]) actual: \(imageBytes[displayByteRange])")
-        assertionFailure("Image is not the same")
+public extension FileManager {
+    func createTempDirectory() throws -> String {
+        let tempDirectory = (NSTemporaryDirectory() as NSString).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(atPath: tempDirectory,
+                                                withIntermediateDirectories: true,
+                                                attributes: nil)
+        return tempDirectory
     }
 }
-print("... success!")
+
+assert(ProcessInfo.processInfo.arguments.count == 2, "No cubemap textures directory provided")
+
+let cubemapTexturesDir = ProcessInfo.processInfo.arguments[1]
+var isDir : ObjCBool = true
+assert(FileManager.default.fileExists(atPath: cubemapTexturesDir, isDirectory: &isDir), "\(cubemapTexturesDir) does not exist")
+
+let cubemapTextureFileNames = [
+    "cubemap_posx.png",
+    "cubemap_negx.png",
+    "cubemap_posy.png",
+    "cubemap_negy.png",
+    "cubemap_posz.png",
+    "cubemap_negz.png",
+];
+let cubemapTextureFaceFilesDir = try FileManager.default.createTempDirectory();
+let cubemapTextureFaceFiles = CUBE_FACE_RANGE.map { face_id in
+    "\(cubemapTextureFaceFilesDir)/\(face_id).lz"
+}
+
+var originalCubeFaceBytes: [[UInt8]] = [];
+let device = MTLCreateSystemDefaultDevice()!;
+var width = 0;
+var height = 0;
+var pixelFormat: MTLPixelFormat? = nil;
+for face_id in CUBE_FACE_RANGE {
+    let filename = "\(cubemapTexturesDir)/\(cubemapTextureFileNames[face_id])";
+    print("Reading raw pixel bytes from PNG texture \(filename)")
+    let texture = try MTKTextureLoader(device: device).newTexture(URL: URL(filePath: filename))
+    assert([.bgra8Unorm_srgb, .bgra8Unorm, .rgba8Unorm_srgb, .rgba8Unorm].contains(texture.pixelFormat), "Unexpected texture pixel format from loading image")
+    assert(
+        (width == 0 && texture.width > 0) || (width == texture.width),
+        "Width is invalid, must match other cube faces"
+    );
+    assert(
+        (height == 0 && texture.height > 0) || (height == texture.height),
+        "Height is invalid, must match other cube faces"
+    );
+    assert(
+        (pixelFormat == nil) || (pixelFormat == texture.pixelFormat),
+        "Pixel Format is invalid, must match other cube faces"
+    );
+    width = texture.width
+    height = texture.height
+    pixelFormat = texture.pixelFormat
+    let bytesPerRow = texture.width * BYTES_PER_PIXEL
+    let totalBytes = bytesPerRow * texture.height
+    var textureBytes: [UInt8] = Array<UInt8>.init(repeating: 0, count: totalBytes)
+    texture.getBytes(&textureBytes,
+                           bytesPerRow: bytesPerRow,
+                           from: MTLRegion(
+                            origin: MTLOrigin(x: 0, y: 0, z: 0),
+                            size: MTLSize(width: texture.width, height: texture.height, depth: 1)
+                           ),
+                           mipmapLevel: 0)
+    originalCubeFaceBytes.append(textureBytes);
+    
+    let tmpTextureFile = cubemapTextureFaceFiles[face_id];
+    print("Writing compressed cube face (\(face_id)) texture bytes to \(tmpTextureFile) w/chunk size \(COMPRESSION_CHUNK_SIZE)...")
+    let context = MTLIOCreateCompressionContext(tmpTextureFile, COMPRESSION_METHOD, COMPRESSION_CHUNK_SIZE)!
+    MTLIOCompressionContextAppendData(context, &textureBytes, totalBytes)
+    let compressionStatus = MTLIOFlushAndDestroyCompressionContext(context)
+    assert(compressionStatus == MTLIOCompressionStatus.complete, "Failed to write \(tmpTextureFile)")
+    print("... write completed.")
+}
+
+
+let cubeTextureDesc = MTLTextureDescriptor()
+cubeTextureDesc.width = width;
+cubeTextureDesc.height = height;
+cubeTextureDesc.pixelFormat = pixelFormat!
+cubeTextureDesc.textureType = .typeCube
+cubeTextureDesc.depth = 1
+let cubeTexture = device.makeTexture(descriptor: cubeTextureDesc)!
+
+let bytesPerRow = cubeTextureDesc.width * BYTES_PER_PIXEL
+let bytesPerImage = bytesPerRow * cubeTextureDesc.height
+let command_queue = try device.makeIOCommandQueue(descriptor: MTLIOCommandQueueDescriptor())
+let single_command_buffer = USE_SINGLE_COMMAND_BUFFER ? command_queue.makeCommandBuffer() : nil
+
+print("\n")
+
+if USE_SINGLE_COMMAND_BUFFER {
+    print("Loading cube faces using MTLIO with a single command buffer...")
+} else {
+    print("Loading cube faces using MTLIO with a command buffer for EACH face...")
+}
+for face_id in CUBE_FACE_RANGE {
+    let command_buffer_to_use = USE_SINGLE_COMMAND_BUFFER ? single_command_buffer! : command_queue.makeCommandBuffer()
+    let handle = try device.makeIOHandle(url: URL(filePath: cubemapTextureFaceFiles[face_id]), compressionMethod: COMPRESSION_METHOD)
+    command_buffer_to_use.load(
+        cubeTexture,
+        slice: face_id,
+        level: 0,
+        size: MTLSizeMake(width, height, 1),
+        sourceBytesPerRow: bytesPerRow,
+        sourceBytesPerImage: bytesPerImage,
+        destinationOrigin: MTLOriginMake(0, 0, 0),
+        sourceHandle: handle,
+        sourceHandleOffset: 0)
+    if !USE_SINGLE_COMMAND_BUFFER {
+        command_buffer_to_use.commit()
+        command_buffer_to_use.waitUntilCompleted()
+        assert(command_buffer_to_use.status == .complete, "Loading Cube Map textures using MTLIO failed")
+    }
+}
+if USE_SINGLE_COMMAND_BUFFER {
+    single_command_buffer!.commit()
+    single_command_buffer!.waitUntilCompleted()
+    assert(single_command_buffer!.status == .complete, "Loading Cube Map textures using MTLIO failed")
+}
+print("... loading completed.")
+
+print("\n")
+
+for face_id in CUBE_FACE_RANGE {
+    print("Verifying bytes loaded by MTLIO into cube face \(face_id) texture matches original source bytes")
+    
+    var loadedCubeFaceBytes: [UInt8] = Array<UInt8>.init(repeating: 0, count: bytesPerImage)
+    cubeTexture.getBytes(
+        &loadedCubeFaceBytes,
+        bytesPerRow: bytesPerRow,
+        bytesPerImage: bytesPerImage,
+        from: MTLRegionMake3D(0, 0, 0, width, height, 1),
+        mipmapLevel: 0,
+        slice: face_id)
+    
+    assert(memcmp(originalCubeFaceBytes[face_id], loadedCubeFaceBytes, bytesPerImage) == 0, "Loaded cube face \(face_id) texture does not match original source bytes");
+}

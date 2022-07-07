@@ -23,11 +23,15 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		132A3EE1287633FF00F9C0DE /* texture.rawbytes */ = {isa = PBXFileReference; lastKnownFileType = text; path = texture.rawbytes; sourceTree = "<group>"; };
-		132A3EE22876340700F9C0DE /* texture.rawbytes.lz4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = texture.rawbytes.lz4; sourceTree = "<group>"; };
+		1316AA9B287772D800EB8F49 /* cubemap_negz.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = cubemap_negz.png; sourceTree = "<group>"; };
+		1316AA9C287772D800EB8F49 /* cubemap_posx.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = cubemap_posx.png; sourceTree = "<group>"; };
+		1316AA9D287772D800EB8F49 /* cubemap_posz.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = cubemap_posz.png; sourceTree = "<group>"; };
+		1316AA9E287772D900EB8F49 /* cubemap_negy.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = cubemap_negy.png; sourceTree = "<group>"; };
+		1316AA9F287772D900EB8F49 /* cubemap_posy.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = cubemap_posy.png; sourceTree = "<group>"; };
+		1316AAA0287772D900EB8F49 /* cubemap_negx.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = cubemap_negx.png; sourceTree = "<group>"; };
+		1316AAA1287772D900EB8F49 /* cubemap_readme.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = cubemap_readme.txt; sourceTree = "<group>"; };
 		136FC36E285A6CF8003DC900 /* x-mtlio-compress-texture */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "x-mtlio-compress-texture"; sourceTree = BUILT_PRODUCTS_DIR; };
 		136FC371285A6CF8003DC900 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		136FC378285A6D38003DC900 /* brick.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = brick.png; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +45,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1316AA9A287772A700EB8F49 /* cubemap-textures */ = {
+			isa = PBXGroup;
+			children = (
+				1316AAA0287772D900EB8F49 /* cubemap_negx.png */,
+				1316AA9E287772D900EB8F49 /* cubemap_negy.png */,
+				1316AA9B287772D800EB8F49 /* cubemap_negz.png */,
+				1316AA9C287772D800EB8F49 /* cubemap_posx.png */,
+				1316AA9F287772D900EB8F49 /* cubemap_posy.png */,
+				1316AA9D287772D800EB8F49 /* cubemap_posz.png */,
+				1316AAA1287772D900EB8F49 /* cubemap_readme.txt */,
+			);
+			path = "cubemap-textures";
+			sourceTree = "<group>";
+		};
 		136FC365285A6CF8003DC900 = {
 			isa = PBXGroup;
 			children = (
@@ -60,10 +78,8 @@
 		136FC370285A6CF8003DC900 /* x-mtlio-compress-texture */ = {
 			isa = PBXGroup;
 			children = (
-				136FC378285A6D38003DC900 /* brick.png */,
+				1316AA9A287772A700EB8F49 /* cubemap-textures */,
 				136FC371285A6CF8003DC900 /* main.swift */,
-				132A3EE1287633FF00F9C0DE /* texture.rawbytes */,
-				132A3EE22876340700F9C0DE /* texture.rawbytes.lz4 */,
 			);
 			path = "x-mtlio-compress-texture";
 			sourceTree = "<group>";
